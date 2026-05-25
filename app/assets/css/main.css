@@ -1,0 +1,24 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+/* Tiptap rich-text editor (ProseMirror ships no styles of its own) */
+.tiptap {
+  white-space: pre-wrap;
+}
+.tiptap:focus {
+  outline: none;
+}
+.tiptap p {
+  margin: 0;
+}
+.tiptap p + p {
+  margin-top: 0.5rem;
+}
+/* Empty-state placeholder */
+.tiptap p.is-editor-empty:first-child::before {
+  content: "Write your content here…";
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--color-slate-400, #94a3b8);
+}

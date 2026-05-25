@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"for \\(const p of ['@tiptap/vue-3','@tiptap/pm','@tiptap/starter-kit','@tiptap/extension-text-style','@tiptap/extension-color']\\) { try { console.log\\(p, require\\(p+'/package.json'\\).version\\) } catch\\(e\\){ console.log\\(p, 'ERR', e.message\\) } }\")",
+      "Bash(node -e \"console.log\\(Object.keys\\(require\\('@tiptap/extension-color'\\)\\)\\)\")",
+      "Bash(node .output/server/index.mjs)",
+      "Bash(echo \"started pid $!\")",
+      "Bash(curl -s -o /tmp/home.html -w \"%{http_code}\\\\n\" http://localhost:3000/)",
+      "Read(//tmp/**)",
+      "Bash(grep -n \"</aside>\\\\|</section>\\\\|</template>\\\\|</div>$\" app/components/PdfDesigner.vue)"
+    ]
+  }
+}
