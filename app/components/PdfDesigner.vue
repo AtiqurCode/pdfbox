@@ -85,26 +85,9 @@ function applyStyle(preset: (typeof STYLE_PRESETS)[number]) {
 }
 
 // ── Contrast checker (WCAG) between text and background ──────────────────────
-function relLuminance(hex: string): number {
-  const m = /^#([0-9a-fA-F]{6})$/.exec(hex)
-  if (!m) return 1
-  const n = parseInt(m[1]!, 16)
-  const srgb = [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff].map((v) => {
-    const c = v / 255
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
-  })
-  return 0.2126 * srgb[0]! + 0.7152 * srgb[1]! + 0.0722 * srgb[2]!
-}
-
-const contrastRatio = computed(() => {
-  const t = store.config.design.textColor
-  const b = store.config.design.backgroundColor
-  if (!isHex(t) || !isHex(b)) return null
-  const L1 = relLuminance(t)
-  const L2 = relLuminance(b)
-  const ratio = (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05)
-  return Math.round(ratio * 100) / 100
-})
+const contrast = computed(() =>
+  contrastRatio(store.config.design.textColor, store.config.design.backgroundColor)
+)
 
 function safeHex(v: string, fallback: string): string {
   return isHex(v) ? v : fallback
@@ -137,31 +120,6 @@ function validate(): string[] {
 }
 
 /** Assign a value into a nested object using a dotted key path (e.g. "client.name"). */
-function setByPath(target: Record<string, any>, path: string, value: unknown) {
-  const keys = path.split('.').map((k) => k.trim()).filter(Boolean)
-  if (keys.length === 0) return
-  let cur = target
-  for (let i = 0; i < keys.length - 1; i++) {
-    const k = keys[i]!
-    if (typeof cur[k] !== 'object' || cur[k] === null) cur[k] = {}
-    cur = cur[k]
-  }
-  cur[keys[keys.length - 1]!] = value
-}
-
-/** Build the merge-data object from the key/value rows (dotted keys allowed). */
-function buildMergeData(): Record<string, unknown> | undefined {
-  const obj: Record<string, any> = {}
-  let any = false
-  for (const row of mergeRows.value) {
-    const key = row.key.trim()
-    if (!key) continue
-    setByPath(obj, key, row.value)
-    any = true
-  }
-  return any ? obj : undefined
-}
-
 function buildPayload(): PdfDocumentConfig {
   const payload: PdfDocumentConfig = JSON.parse(JSON.stringify(toRaw(store.config)))
   payload.design.textColor = safeHex(payload.design.textColor, '#111827') as any
@@ -169,7 +127,7 @@ function buildPayload(): PdfDocumentConfig {
   payload.design.accentColor = safeHex(payload.design.accentColor, '#2563eb') as any
   payload.design.backgroundColor = safeHex(payload.design.backgroundColor, '#ffffff') as any
 
-  const data = buildMergeData()
+  const data = buildMergeData(mergeRows.value)
   if (data) payload.data = data
   else delete (payload as any).data
   return payload
@@ -197,38 +155,6 @@ async function fetchPdfBlob(payload: PdfDocumentConfig, signal?: AbortSignal): P
     signal
   })
   return new Blob([data], { type: 'application/pdf' })
-}
-
-/** Minimal CSV parser (handles quoted fields, embedded commas/newlines, "" escapes). */
-function parseCsv(text: string): { columns: string[]; rows: Record<string, string>[] } {
-  const records: string[][] = []
-  let field = ''
-  let row: string[] = []
-  let inQuotes = false
-  const src = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-  for (let i = 0; i < src.length; i++) {
-    const c = src[i]
-    if (inQuotes) {
-      if (c === '"') {
-        if (src[i + 1] === '"') { field += '"'; i++ }
-        else inQuotes = false
-      } else field += c
-    } else if (c === '"') inQuotes = true
-    else if (c === ',') { row.push(field); field = '' }
-    else if (c === '\n') { row.push(field); records.push(row); row = []; field = '' }
-    else field += c
-  }
-  if (field.length > 0 || row.length > 0) { row.push(field); records.push(row) }
-
-  const nonEmpty = records.filter((r) => r.some((v) => v.trim().length > 0))
-  if (nonEmpty.length === 0) return { columns: [], rows: [] }
-  const columns = nonEmpty[0]!.map((h) => h.trim())
-  const rows = nonEmpty.slice(1).map((r) => {
-    const obj: Record<string, string> = {}
-    columns.forEach((col, idx) => { obj[col] = (r[idx] ?? '').trim() })
-    return obj
-  })
-  return { columns, rows }
 }
 
 async function onCsvPicked(file: File | null) {
@@ -520,9 +446,9 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="grid gap-6 lg:grid-cols-12">
-    <section class="lg:col-span-7">
-      <div class="space-y-6">
+  <div class="grid gap-4 sm:gap-6 lg:grid-cols-12">
+    <section class="min-w-0 lg:col-span-7">
+      <div class="space-y-4 sm:space-y-6">
         <UCard class="border-violet-100/60 shadow-sm dark:border-slate-700/60">
           <template #header>
             <div class="flex flex-wrap items-center justify-between gap-3">
@@ -540,7 +466,7 @@ onUnmounted(() => {
                 </UDropdownMenu>
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                <UButtonGroup size="sm">
+                <UFieldGroup size="sm">
                   <UButton
                     variant="ghost"
                     icon="i-lucide-undo-2"
@@ -555,7 +481,7 @@ onUnmounted(() => {
                     title="Redo (Ctrl/Cmd+Shift+Z)"
                     @click="onRedo"
                   />
-                </UButtonGroup>
+                </UFieldGroup>
                 <USelect
                   placeholder="Load template…"
                   :items="templateItems"
@@ -702,11 +628,11 @@ onUnmounted(() => {
               </div>
 
               <div
-                v-if="contrastRatio !== null && contrastRatio < 4.5"
+                v-if="contrast !== null && contrast < 4.5"
                 class="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-400"
               >
                 <UIcon name="i-lucide-triangle-alert" class="mt-0.5 size-3.5 shrink-0" />
-                <span>Low text/background contrast ({{ contrastRatio }}:1). Aim for 4.5:1 or higher for readability.</span>
+                <span>Low text/background contrast ({{ contrast }}:1). Aim for 4.5:1 or higher for readability.</span>
               </div>
             </div>
           </div>
@@ -824,8 +750,8 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <section class="lg:col-span-5">
-      <div class="lg:sticky lg:top-6">
+    <section class="min-w-0 lg:col-span-5">
+      <div class="lg:sticky lg:top-20">
         <UCard class="border-violet-200/60 shadow-sm dark:border-slate-700/60">
           <template #header>
             <div class="flex flex-wrap items-center justify-between gap-2">
@@ -859,12 +785,12 @@ onUnmounted(() => {
           <iframe
             v-if="previewUrl"
             :src="previewUrl"
-            class="h-[80vh] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-700"
+            class="h-[60vh] sm:h-[75vh] lg:h-[80vh] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-700"
           />
           <!-- Onboarding: empty document → offer a starting template -->
           <div
             v-else-if="isEmptyDoc"
-            class="grid h-[80vh] place-items-center rounded-lg border border-dashed border-slate-300 px-6 text-center dark:border-slate-600"
+            class="grid h-[60vh] sm:h-[75vh] lg:h-[80vh] place-items-center rounded-lg border border-dashed border-slate-300 px-6 text-center dark:border-slate-600"
           >
             <div class="w-full max-w-sm space-y-4">
               <div class="space-y-1">
@@ -886,7 +812,7 @@ onUnmounted(() => {
           </div>
           <div
             v-else
-            class="grid h-[80vh] place-items-center rounded-lg border border-dashed border-slate-300 text-center text-sm text-slate-400 dark:border-slate-600 dark:text-slate-500"
+            class="grid h-[60vh] sm:h-[75vh] lg:h-[80vh] place-items-center rounded-lg border border-dashed border-slate-300 text-center text-sm text-slate-400 dark:border-slate-600 dark:text-slate-500"
           >
             <div class="space-y-1">
               <UIcon name="i-lucide-file-text" class="mx-auto size-8 opacity-60" />

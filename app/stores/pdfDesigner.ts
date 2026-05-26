@@ -82,7 +82,7 @@ function defaultConfig(): PdfDocumentConfig {
           id: newId('p'),
           type: 'paragraph',
           align: 'center',
-          spans: [{ text: 'Confidential · Generated with PDFBox', color: '#6b7280' }]
+          spans: [{ text: 'Confidential · Generated with PDFora', color: '#6b7280' }]
         }
       ]
     },
@@ -139,77 +139,110 @@ export const TEMPLATES: Record<string, { label: string; build: () => PdfDocument
       layout: defaultLayout()
     })
   },
+
   invoice: {
     label: 'Invoice',
     build: () => ({
-      title: 'Invoice #001',
+      title: 'Invoice INV-001',
       header: {
         blocks: [
-          { id: newId('p'), type: 'paragraph', align: 'left', spans: [{ text: 'Your Company Ltd.', bold: true }] },
-          { id: newId('p'), type: 'paragraph', align: 'left', spans: [{ text: '123 Business Ave · City · Country' }] }
+          { id: newId('p'), type: 'paragraph', align: 'left', spans: [{ text: 'Northwind Studio', bold: true }] },
+          { id: newId('p'), type: 'paragraph', align: 'left', spans: [{ text: 'hello@northwind.studio  ·  (555) 010-1234', color: '#6b7280' }] }
         ]
       },
       body: {
         blocks: [
-          { id: newId('h'), type: 'heading', level: 1, text: 'Invoice #001' },
-          { id: newId('p'), type: 'paragraph', spans: [{ text: 'Bill to: Client Name\nDate: 2026-01-15\nDue: 2026-02-15' }] },
+          { id: newId('h'), type: 'heading', level: 1, text: 'Invoice INV-001' },
+          // Right-aligned dates sit just under the title, like a printed invoice.
+          {
+            id: newId('p'), type: 'paragraph', align: 'right',
+            spans: [
+              { text: 'Issued ', color: '#6b7280' }, { text: '03/01/2021' },
+              { text: '     Due ', color: '#6b7280' }, { text: '03/16/2021' }
+            ]
+          },
+          // Bill-to block.
+          {
+            id: newId('p'), type: 'paragraph',
+            spans: [
+              { text: 'Bill to\n', color: '#6b7280' },
+              { text: 'Acme Corporation', bold: true },
+              { text: '\n123 Market Street, Suite 400\nSpringfield, IL 62701' }
+            ]
+          },
+          // Items — the table is the one strong visual element.
           {
             id: newId('t'), type: 'table', columns: 4, rows: 4,
             cells: [
-              [{ text: 'Item', header: true }, { text: 'Qty', header: true }, { text: 'Price', header: true }, { text: 'Total', header: true }],
-              [{ text: 'Web Design' }, { text: '1' }, { text: '$2,000' }, { text: '$2,000' }],
-              [{ text: 'Development' }, { text: '40 hrs' }, { text: '$100/hr' }, { text: '$4,000' }],
-              [{ text: '' }, { text: '' }, { text: 'Total', header: true }, { text: '$6,000', header: true }]
+              [{ text: 'Description', header: true }, { text: 'Qty', header: true }, { text: 'Unit price', header: true }, { text: 'Amount', header: true }],
+              [{ text: 'Brand & identity design' }, { text: '1' }, { text: '$2,000.00' }, { text: '$2,000.00' }],
+              [{ text: 'Website development' }, { text: '40 hrs' }, { text: '$100.00' }, { text: '$4,000.00' }],
+              [{ text: 'Hosting & support (annual)' }, { text: '1' }, { text: '$600.00' }, { text: '$600.00' }]
             ]
           },
-          { id: newId('p'), type: 'paragraph', spans: [{ text: 'Payment terms: Net 30. Thank you for your business.' }] }
+          // Totals, right-aligned beneath the table.
+          { id: newId('p'), type: 'paragraph', align: 'right', spans: [{ text: 'Subtotal   ', color: '#6b7280' }, { text: '$6,600.00' }] },
+          { id: newId('p'), type: 'paragraph', align: 'right', spans: [{ text: 'Tax (6.25%)   ', color: '#6b7280' }, { text: '$412.50' }] },
+          { id: newId('p'), type: 'paragraph', align: 'right', spans: [{ text: 'Total due   ', bold: true }, { text: '$7,012.50', bold: true }] },
+          {
+            id: newId('p'), type: 'paragraph',
+            spans: [{ text: 'Payment terms: ', bold: true }, { text: 'Net 30. Please reference the invoice number with your payment. Thank you for your business!', color: '#6b7280' }]
+          }
         ]
       },
       footer: {
         blocks: [
-          { id: newId('p'), type: 'paragraph', align: 'center', spans: [{ text: 'Your Company Ltd. · hello@company.com', color: '#6b7280' }] }
+          { id: newId('p'), type: 'paragraph', align: 'center', spans: [{ text: 'Northwind Studio · hello@northwind.studio', color: '#9ca3af' }] }
         ]
       },
-      design: { font: 'Helvetica', textColor: '#111827', backgroundColor: '#ffffff', accentColor: '#2563eb', headingColor: '#1e3a5f' },
-      layout: defaultLayout()
+      // Neutral, print-like palette: near-black ink, charcoal table header.
+      design: { font: 'Helvetica', textColor: '#1f2937', backgroundColor: '#ffffff', accentColor: '#374151', headingColor: '#111827' },
+      layout: { pageSize: 'A4', orientation: 'portrait', marginPt: 56 }
     })
   },
+
   report: {
     label: 'Report',
     build: () => ({
-      title: 'Quarterly Report',
+      title: 'Acme Corp — Q1 2026 Report',
       header: {
         blocks: [
-          { id: newId('p'), type: 'paragraph', align: 'center', spans: [{ text: 'Acme Corp — Quarterly Report', bold: true }] }
+          { id: newId('p'), type: 'paragraph', align: 'left', spans: [{ text: 'Acme Corp', bold: true }, { text: '   ·   Q1 2026 Business Review', color: '#64748b' }] }
         ]
       },
       body: {
         blocks: [
           { id: newId('h'), type: 'heading', level: 1, text: 'Q1 2026 Summary' },
-          { id: newId('p'), type: 'paragraph', spans: [{ text: 'This report covers the key metrics and accomplishments for Q1 2026. Overall performance exceeded targets by 12%.' }] },
-          { id: newId('h'), type: 'heading', level: 2, text: 'Key Metrics' },
           {
-            id: newId('t'), type: 'table', columns: 3, rows: 4,
+            id: newId('p'), type: 'paragraph',
+            spans: [{ text: 'This report covers the key metrics and accomplishments for Q1 2026. Overall performance ' }, { text: 'exceeded targets by 12%', bold: true, color: '#15803d' }, { text: ', driven by strong demand and improved retention.' }]
+          },
+          { id: newId('h'), type: 'heading', level: 2, text: 'Key metrics' },
+          {
+            id: newId('t'), type: 'table', columns: 4, rows: 4,
             cells: [
-              [{ text: 'Metric', header: true }, { text: 'Target', header: true }, { text: 'Actual', header: true }],
-              [{ text: 'Revenue' }, { text: '$1.2M' }, { text: '$1.35M' }],
-              [{ text: 'New Customers' }, { text: '150' }, { text: '168' }],
-              [{ text: 'Retention' }, { text: '92%' }, { text: '95%' }]
+              [{ text: 'Metric', header: true }, { text: 'Target', header: true }, { text: 'Actual', header: true }, { text: 'Change', header: true }],
+              [{ text: 'Revenue' }, { text: '$1.20M' }, { text: '$1.35M' }, { text: '+12%' }],
+              [{ text: 'New customers' }, { text: '150' }, { text: '168' }, { text: '+12%' }],
+              [{ text: 'Net retention' }, { text: '92%' }, { text: '95%' }, { text: '+3pt' }]
             ]
           },
-          { id: newId('h'), type: 'heading', level: 2, text: 'Next Steps' },
-          { id: newId('p'), type: 'paragraph', spans: [{ text: 'Focus areas for Q2 include expanding the sales team, launching the new product line, and improving onboarding NPS scores.' }] }
+          { id: newId('h'), type: 'heading', level: 2, text: 'Highlights' },
+          { id: newId('p'), type: 'paragraph', spans: [{ text: '• Launched the new analytics dashboard to all enterprise customers.\n• Reduced average onboarding time from 14 to 9 days.\n• Expanded the partnerships team by three hires.' }] },
+          { id: newId('h'), type: 'heading', level: 2, text: 'Next steps' },
+          { id: newId('p'), type: 'paragraph', spans: [{ text: 'Focus areas for next quarter: expand the sales team, launch the new product line, and lift onboarding NPS above 60.' }] }
         ]
       },
       footer: {
         blocks: [
-          { id: newId('p'), type: 'paragraph', align: 'center', spans: [{ text: 'Confidential — Acme Corp', color: '#6b7280' }] }
+          { id: newId('p'), type: 'paragraph', align: 'center', spans: [{ text: 'Confidential — Acme Corp   ·   Page {{page}} of {{pages}}', color: '#94a3b8' }] }
         ]
       },
-      design: { font: 'Helvetica', textColor: '#111827', backgroundColor: '#ffffff', accentColor: '#0f766e', headingColor: '#0f766e' },
-      layout: defaultLayout()
+      design: { font: 'Helvetica', textColor: '#1f2937', backgroundColor: '#ffffff', accentColor: '#0d9488', headingColor: '#0f766e' },
+      layout: { pageSize: 'A4', orientation: 'portrait', marginPt: 56 }
     })
   },
+
   letter: {
     label: 'Letter',
     build: () => ({
@@ -217,22 +250,22 @@ export const TEMPLATES: Record<string, { label: string; build: () => PdfDocument
       header: {
         blocks: [
           { id: newId('p'), type: 'paragraph', align: 'left', spans: [{ text: 'Jane Doe', bold: true }] },
-          { id: newId('p'), type: 'paragraph', align: 'left', spans: [{ text: '456 Elm Street · Springfield · IL 62701' }] }
+          { id: newId('p'), type: 'paragraph', align: 'left', spans: [{ text: '456 Elm Street · Springfield · IL 62701', color: '#64748b' }] }
         ]
       },
       body: {
         blocks: [
-          { id: newId('p'), type: 'paragraph', spans: [{ text: 'April 14, 2026' }] },
+          { id: newId('p'), type: 'paragraph', align: 'right', spans: [{ text: 'May 25, 2026', color: '#64748b' }] },
           { id: newId('p'), type: 'paragraph', spans: [{ text: 'Dear Mr. Smith,' }] },
-          { id: newId('p'), type: 'paragraph', spans: [{ text: 'I am writing to follow up on our recent conversation regarding the partnership opportunity. We are very excited about the potential collaboration and would like to schedule a meeting to discuss the next steps.' }] },
-          { id: newId('p'), type: 'paragraph', spans: [{ text: 'Please let me know your availability for next week. I look forward to hearing from you.' }] },
-          { id: newId('p'), type: 'paragraph', spans: [{ text: 'Sincerely,' }] },
+          { id: newId('p'), type: 'paragraph', spans: [{ text: 'I am writing to follow up on our recent conversation regarding the partnership opportunity. We are genuinely excited about the potential collaboration and would welcome the chance to discuss the next steps in person.' }] },
+          { id: newId('p'), type: 'paragraph', spans: [{ text: 'Please let me know your availability over the coming week. I look forward to hearing from you.' }] },
+          { id: newId('p'), type: 'paragraph', spans: [{ text: 'Warm regards,', color: '#64748b' }] },
           { id: newId('p'), type: 'paragraph', spans: [{ text: 'Jane Doe', bold: true }] }
         ]
       },
       footer: { blocks: [] },
-      design: { font: 'TimesRoman', textColor: '#111827', backgroundColor: '#ffffff', accentColor: '#6b7280', headingColor: '#111827' },
-      layout: defaultLayout()
+      design: { font: 'TimesRoman', textColor: '#1f2937', backgroundColor: '#fffdf9', accentColor: '#92400e', headingColor: '#1f2937' },
+      layout: { pageSize: 'A4', orientation: 'portrait', marginPt: 64 }
     })
   }
 }

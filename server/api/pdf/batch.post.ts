@@ -1,6 +1,7 @@
 import JSZip from 'jszip'
 import { z } from 'zod'
 import { PdfDocSchema, mergeTemplate } from '../../utils/pdfSchema'
+import { sanitizeFilename } from '../../utils/pdfLayout'
 
 // We implement a minimal in-process batch pipeline by reusing the same payload
 // shape and calling the same renderer via $fetch. Nitro runs this in the same
@@ -11,11 +12,6 @@ const BatchSchema = z.object({
   rows: z.array(z.record(z.string(), z.unknown())).min(1).max(500),
   namePattern: z.string().min(1).max(200).optional()
 })
-
-function sanitizeFilename(name: string): string {
-  const base = name.trim().length > 0 ? name.trim() : 'document'
-  return base.replaceAll(/[^\w\-\.]+/g, '_')
-}
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)

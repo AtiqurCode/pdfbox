@@ -1,56 +1,50 @@
 <script setup lang="ts">
-const colorMode = useColorMode()
 const url = useRequestURL()
+const siteUrl = useRuntimeConfig().public.siteUrl || url.origin
+const canonical = siteUrl.replace(/\/$/, '') + '/'
+const ogImage = siteUrl.replace(/\/$/, '') + '/og.svg'
 
-function toggleDark() {
-  colorMode.preference = colorMode.value === 'dark' ? 'light' : 'dark'
-}
+const description =
+  'PDFora is a free online PDF Designer — design and generate polished, customized PDFs in seconds. Add headings, rich text, tables and images, apply themes, merge data, and batch-generate from CSV.'
 
 useSeoMeta({
-  title: 'PDFBox — PDF designer & generator',
-  description: 'Design and generate customized PDFs in seconds. Add headings, rich text, tables, images, and export as PDF.',
-  ogTitle: 'PDFBox — PDF designer & generator',
-  ogDescription: 'Design and generate customized PDFs in seconds.',
+  title: 'PDF Designer',
+  description,
+  ogTitle: 'PDFora — PDF Designer',
+  ogDescription: description,
   ogType: 'website',
-  ogUrl: url.origin + url.pathname,
-  ogImage: url.origin + '/og.svg',
+  ogUrl: canonical,
+  ogImage,
+  ogSiteName: 'PDFora',
   twitterCard: 'summary_large_image',
-  twitterImage: url.origin + '/og.svg'
+  twitterTitle: 'PDFora — PDF Designer',
+  twitterDescription: description,
+  twitterImage: ogImage
 })
 
 useHead({
-  link: [{ rel: 'canonical', href: url.origin + url.pathname }]
+  link: [{ rel: 'canonical', href: canonical }],
+  script: [
+    {
+      type: 'application/ld+json',
+      innerHTML: JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'WebApplication',
+        name: 'PDFora',
+        alternateName: 'PDFora PDF Designer',
+        applicationCategory: 'BusinessApplication',
+        operatingSystem: 'Web',
+        url: canonical,
+        description,
+        offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' }
+      })
+    }
+  ]
 })
 </script>
 
 <template>
-  <div class="min-h-screen bg-linear-to-b from-violet-50/40 to-slate-50 text-slate-900 dark:from-slate-950 dark:to-slate-900 dark:text-slate-100">
-    <div class="border-b border-violet-100 bg-white/70 backdrop-blur-lg dark:border-slate-800 dark:bg-slate-900/70">
-      <UContainer class="py-5">
-        <div class="flex items-center justify-between gap-4">
-          <div class="flex items-center gap-3">
-            <div class="grid size-10 place-items-center rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-500/20">
-              <span class="text-sm font-bold tracking-tight">PB</span>
-            </div>
-            <div class="leading-tight">
-              <div class="text-base font-bold tracking-tight text-slate-900 dark:text-white">PDFBox</div>
-              <div class="text-[11px] text-slate-500 dark:text-slate-400">Document designer</div>
-            </div>
-          </div>
-
-          <UButton
-            :icon="colorMode.value === 'dark' ? 'i-lucide-sun' : 'i-lucide-moon'"
-            variant="ghost"
-            size="sm"
-            :title="colorMode.value === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
-            @click="toggleDark"
-          />
-        </div>
-      </UContainer>
-    </div>
-
-    <UContainer class="py-6">
-      <PdfDesigner />
-    </UContainer>
-  </div>
+  <UContainer class="py-4 sm:py-6">
+    <PdfDesigner />
+  </UContainer>
 </template>

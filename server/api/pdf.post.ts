@@ -1,4 +1,3 @@
-import { Buffer } from 'node:buffer'
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import type { z } from 'zod'
 import {
@@ -7,37 +6,23 @@ import {
   TableBlockSchema,
   ImageBlockSchema,
   SectionSchema,
-  LayoutSchema,
   DesignSchema,
   mergeTemplate
 } from '../utils/pdfSchema'
+import {
+  hexToRgb01,
+  idealTextColorOn,
+  mixHex,
+  pageSizePt,
+  wrapText,
+  decodeDataUrl,
+  sanitizeFilename
+} from '../utils/pdfLayout'
 
-function hexToRgb01(hex: string): { r: number; g: number; b: number } {
-  const m = /^#([0-9a-fA-F]{6})$/.exec(hex)
-  if (!m) return { r: 0, g: 0, b: 0 }
-  const n = parseInt(m[1]!, 16)
-  return {
-    r: ((n >> 16) & 0xff) / 255,
-    g: ((n >> 8) & 0xff) / 255,
-    b: (n & 0xff) / 255
-  }
-}
-
-function pageSizePt(layout: z.infer<typeof LayoutSchema>): { w: number; h: number } {
-  // PDF points: 72pt = 1in
-  const A4 = { w: 595.28, h: 841.89 }
-  const A5 = { w: 419.53, h: 595.28 }
-  const raw =
-    layout.pageSize === 'A4'
-      ? A4
-      : layout.pageSize === 'A5'
-        ? A5
-        : {
-            w: Math.max(72, layout.customWidthPt ?? A4.w),
-            h: Math.max(72, layout.customHeightPt ?? A4.h)
-          }
-  if (layout.orientation === 'landscape') return { w: raw.h, h: raw.w }
-  return raw
+/** Convert a #RRGGBB string straight into a pdf-lib color. */
+function rgbHex(hex: string) {
+  const { r, g, b } = hexToRgb01(hex)
+  return rgb(r, g, b)
 }
 
 function pickStandardFonts(font: z.infer<typeof DesignSchema>['font']) {
@@ -81,6 +66,13 @@ type RendererCtx = {
     accent: ReturnType<typeof rgb>
     background: ReturnType<typeof rgb>
   }
+  /** Raw hex values, kept so renderers can derive tints / contrast colors. */
+  hex: {
+    text: string
+    heading: string
+    accent: string
+    background: string
+  }
   fonts: {
     regular: any
     bold: any
@@ -110,54 +102,40 @@ function ensureSpace(ctx: RendererCtx, needed: number, opts?: { allowNewPage?: b
   return true
 }
 
-function wrapText(
-  text: string,
-  measure: (s: string) => number,
-  maxWidth: number
-): string[] {
-  const words = text.split(/(\s+)/).filter((w) => w.length > 0)
-  const lines: string[] = []
-  let line = ''
-  for (const w of words) {
-    const next = line.length === 0 ? w : line + w
-    if (measure(next) <= maxWidth) {
-      line = next
-      continue
-    }
-    if (line.length > 0) lines.push(line)
-    // if a single token is too wide, hard-split it
-    if (measure(w) > maxWidth) {
-      let buf = ''
-      for (const ch of w) {
-        const t = buf + ch
-        if (measure(t) <= maxWidth) buf = t
-        else {
-          if (buf) lines.push(buf)
-          buf = ch
-        }
-      }
-      line = buf
-    } else {
-      line = w
-    }
-  }
-  if (line.length > 0) lines.push(line)
-  return lines
-}
-
 function renderHeading(ctx: RendererCtx, level: 1 | 2 | 3, text: string) {
-  const size = level === 1 ? 20 : level === 2 ? 16 : 13
+  const size = level === 1 ? 22 : level === 2 ? 15 : 12.5
   const lineH = size * 1.25
-  ensureSpace(ctx, lineH + 8)
-  ctx.cursorY -= 6
-  ctx.page.drawText(mergeTemplate(text, ctx.data), {
+  // Generous space above, tighter below — gives each section a clear start.
+  const spaceAbove = level === 1 ? 10 : level === 2 ? 14 : 10
+  ensureSpace(ctx, lineH + spaceAbove + (level === 1 ? 8 : 0))
+  ctx.cursorY -= spaceAbove
+
+  const label = mergeTemplate(text, ctx.data)
+  const baselineY = ctx.cursorY - size
+  ctx.page.drawText(label, {
     x: ctx.margin,
-    y: ctx.cursorY - size,
+    y: baselineY,
     size,
     font: ctx.fonts.bold,
     color: ctx.colors.heading
   })
-  ctx.cursorY -= lineH
+
+  // H1 gets a short accent underline that tracks the title width — the small
+  // touch that makes a document read as "designed" rather than typed.
+  if (level === 1) {
+    // A short, fixed accent bar under the title — a recognizable design accent
+    // rather than a half-underline that trails off under whitespace.
+    ctx.page.drawRectangle({
+      x: ctx.margin,
+      y: baselineY - 6,
+      width: 48,
+      height: 3,
+      color: ctx.colors.accent
+    })
+    ctx.cursorY -= lineH + 8
+  } else {
+    ctx.cursorY -= lineH
+  }
 }
 
 function renderParagraph(
@@ -173,7 +151,8 @@ function renderParagraph(
   const safeSpans = spans
     .map((s) => ({
       ...s,
-      text: mergeTemplate(String(s.text ?? ''), ctx.data).replace(/\r?\n/g, ' ')
+      // Keep newlines: they're honored as hard line breaks below.
+      text: mergeTemplate(String(s.text ?? ''), ctx.data).replace(/\r\n/g, '\n')
     }))
     .filter((s) => s.text.length > 0)
 
@@ -237,6 +216,11 @@ function renderParagraph(
   for (const run of runs) {
     const tokens = run.text.split(/(\s+)/).filter((t) => t.length > 0)
     for (let token of tokens) {
+      // A whitespace token containing a newline forces a hard line break.
+      if (/\n/.test(token)) {
+        flushLine()
+        continue
+      }
       if (line.length === 0 && /^\s+$/.test(token)) continue
 
       const tokenW = ctx.measure(run.font, size, token)
@@ -266,60 +250,87 @@ function renderParagraph(
 
 function renderTable(ctx: RendererCtx, table: z.infer<typeof TableBlockSchema>) {
   const size = 10
-  const rowH = 18
+  const rowH = 24
+  const padding = 8
   const maxW = ctx.pageW - ctx.margin * 2
   const cols = Math.max(1, table.columns)
   const colW = maxW / cols
 
-  const gridColor = rgb(0.9, 0.9, 0.92)
-  const headerBg = rgb(0.97, 0.97, 0.98)
+  // A modern, restrained palette derived from the document colors:
+  //  - header cells use the accent band with an auto-contrast text color
+  //  - body rows alternate a faint accent tint (zebra striping)
+  //  - separators are thin horizontal rules; no heavy vertical grid lines
+  const headerText = rgbHex(idealTextColorOn(ctx.hex.accent))
+  const zebra = rgbHex(mixHex(ctx.hex.background, ctx.hex.accent, 0.06))
+  const ruleColor = rgbHex(mixHex(ctx.hex.background, ctx.hex.text, 0.14))
+  const tableTop = ctx.cursorY
+  const startPage = ctx.page
 
   for (let r = 0; r < table.rows; r++) {
     ensureSpace(ctx, rowH + 6)
 
     const yTop = ctx.cursorY
     const yBottom = yTop - rowH
-    for (let c = 0; c < cols; c++) {
-      const cell = table.cells?.[r]?.[c] ?? { text: '' }
-      const x = ctx.margin + c * colW
-      if (cell.header) {
-        ctx.page.drawRectangle({
-          x,
-          y: yBottom,
-          width: colW,
-          height: rowH,
-          color: headerBg
-        })
-      }
-      ctx.page.drawRectangle({
-        x,
-        y: yBottom,
-        width: colW,
-        height: rowH,
-        borderColor: gridColor,
-        borderWidth: 1
-      })
+    const rowCells = Array.from({ length: cols }, (_, c) => table.cells?.[r]?.[c] ?? { text: '' })
+    const rowHasHeader = rowCells.some((cell) => cell.header)
 
-      const padding = 4
-      const font = cell.header ? ctx.fonts.bold : ctx.fonts.regular
+    // Row background: accent band for header rows, alternating tint otherwise.
+    if (rowHasHeader) {
+      ctx.page.drawRectangle({ x: ctx.margin, y: yBottom, width: maxW, height: rowH, color: ctx.colors.accent })
+    } else if (r % 2 === 1) {
+      ctx.page.drawRectangle({ x: ctx.margin, y: yBottom, width: maxW, height: rowH, color: zebra })
+    }
+
+    for (let c = 0; c < cols; c++) {
+      const cell = rowCells[c]!
+      const x = ctx.margin + c * colW
+      const isHeader = cell.header || rowHasHeader
+      const font = isHeader ? ctx.fonts.bold : ctx.fonts.regular
+      const color = cell.header || rowHasHeader ? headerText : ctx.colors.text
       const text = mergeTemplate(String(cell.text ?? ''), ctx.data).replace(/\r?\n/g, ' ')
       const maxTextW = colW - padding * 2
       const measure = (s: string) => ctx.measure(font, size, s)
       const lines = wrapText(text, measure, maxTextW).slice(0, 2)
+      // Vertically center the text block within the row.
+      const blockH = lines.length * size + (lines.length - 1) * (size * 0.15)
+      const firstBaseline = yTop - (rowH - blockH) / 2 - size
       for (let i = 0; i < lines.length; i++) {
         ctx.page.drawText(lines[i]!, {
           x: x + padding,
-          y: yTop - padding - size - i * (size * 1.15),
+          y: firstBaseline - i * (size * 1.15),
           size,
           font,
-          color: ctx.colors.text
+          color
         })
       }
+    }
+
+    // Thin separator under each non-header row.
+    if (!rowHasHeader) {
+      ctx.page.drawLine({
+        start: { x: ctx.margin, y: yBottom },
+        end: { x: ctx.margin + maxW, y: yBottom },
+        thickness: 0.5,
+        color: ruleColor
+      })
     }
     ctx.cursorY -= rowH
   }
 
-  ctx.cursorY -= 10
+  // Crisp outer frame — only when the table fit on a single page (otherwise a
+  // frame spanning the page break would draw at the wrong height).
+  if (ctx.page === startPage) {
+    ctx.page.drawRectangle({
+      x: ctx.margin,
+      y: ctx.cursorY,
+      width: maxW,
+      height: tableTop - ctx.cursorY,
+      borderColor: ruleColor,
+      borderWidth: 0.75
+    })
+  }
+
+  ctx.cursorY -= 14
 }
 
 async function renderImage(ctx: RendererCtx, img: z.infer<typeof ImageBlockSchema>) {
@@ -481,6 +492,12 @@ export default defineEventHandler(async (event) => {
       accent: rgb(accent.r, accent.g, accent.b),
       background: rgb(bg.r, bg.g, bg.b)
     },
+    hex: {
+      text: cfg.design.textColor,
+      heading: cfg.design.headingColor,
+      accent: cfg.design.accentColor,
+      background: cfg.design.backgroundColor
+    },
     fonts
   }
 
@@ -545,16 +562,7 @@ export default defineEventHandler(async (event) => {
   const bytes = await doc.save()
   setHeader(event, 'Content-Type', 'application/pdf')
   const mergedTitle = mergeTemplate(cfg.title, cfg.data)
-  setHeader(event, 'Content-Disposition', `attachment; filename="${mergedTitle.replaceAll(/[^\\w\\-]+/g, '_')}.pdf"`)
+  setHeader(event, 'Content-Disposition', `attachment; filename="${sanitizeFilename(mergedTitle)}.pdf"`)
   return bytes
 })
-
-function decodeDataUrl(dataUrl: string): { mime: string; bytes: Uint8Array } {
-  const m = /^data:([^;]+);base64,(.*)$/.exec(dataUrl)
-  if (!m) throw new Error('Invalid data URL; expected base64 data: URL.')
-  const mime = m[1]!
-  const b64 = m[2]!
-  const buf = Buffer.from(b64, 'base64')
-  return { mime, bytes: new Uint8Array(buf) }
-}
 
