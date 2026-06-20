@@ -418,6 +418,19 @@ export const usePdfDesignerStore = defineStore('pdfDesigner', () => {
     config.value = tpl.build()
   }
 
+  function applyAiConfig(next: PdfDocumentConfig, opts?: { mergeBody?: boolean }) {
+    if (opts?.mergeBody) {
+      config.value = {
+        ...cloneConfig(config.value),
+        title: next.title || config.value.title,
+        body: next.body
+      }
+    } else {
+      config.value = cloneConfig(next)
+    }
+    resetHistory()
+  }
+
   function resetToDefault() {
     config.value = defaultConfig()
   }
@@ -485,6 +498,7 @@ export const usePdfDesignerStore = defineStore('pdfDesigner', () => {
     duplicateBlock,
     addDefaultTable,
     applyTemplate,
+    applyAiConfig,
     resetToDefault,
     // documents
     documentList,

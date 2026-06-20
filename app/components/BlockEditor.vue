@@ -12,6 +12,9 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: PdfSection): void
 }>()
 
+const toast = useToast()
+const rewritingId = ref<string | null>(null)
+
 const section = computed({
   get: () => props.modelValue,
   set: (v) => emit('update:modelValue', v)
@@ -169,6 +172,40 @@ function setParagraphAlign(id: string, align: 'left' | 'center' | 'right') {
   updateBlock(id, (b) => (b.type === 'paragraph' ? { ...b, align } : b))
 }
 
+const REWRITE_ACTIONS = [
+  { label: 'Make formal', instruction: 'Rewrite in a formal, professional tone' },
+  { label: 'Make casual', instruction: 'Rewrite in a friendly, casual tone' },
+  { label: 'Shorten', instruction: 'Make shorter while keeping key information' },
+  { label: 'Expand', instruction: 'Expand with more detail and clarity' },
+  { label: 'Fix grammar', instruction: 'Fix grammar and spelling, keep meaning' }
+]
+
+function rewriteItems(block: PdfBlock) {
+  return REWRITE_ACTIONS.map((a) => ({
+    label: a.label,
+    icon: 'i-lucide-sparkles',
+    onSelect: () => rewriteBlock(block, a.instruction)
+  }))
+}
+
+async function rewriteBlock(block: PdfBlock, instruction: string) {
+  if (block.type === 'image') return
+  rewritingId.value = block.id
+  try {
+    const next = await $fetch<PdfBlock>('/api/ai/rewrite', {
+      method: 'POST',
+      body: { block, instruction }
+    })
+    updateBlock(block.id, () => next)
+    toast.add({ title: 'Block rewritten', color: 'success' })
+  } catch (e: any) {
+    const msg = e?.data?.message || e?.message || 'Rewrite failed'
+    toast.add({ title: 'AI failed', description: msg, color: 'error' })
+  } finally {
+    rewritingId.value = null
+  }
+}
+
 async function onImageFilePicked(blockId: string, file: File | null) {
   if (!file) return
   const dataUrl = await fileToDataUrl(file)
@@ -242,6 +279,20 @@ function fileToDataUrl(file: File): Promise<string> {
               </UBadge>
             </div>
             <div class="flex items-center gap-1 opacity-70 hover:opacity-100">
+              <UDropdownMenu
+                v-if="block.type !== 'image'"
+                :items="rewriteItems(block)"
+                :content="{ align: 'end' }"
+              >
+                <UButton
+                  size="xs"
+                  variant="ghost"
+                  icon="i-lucide-sparkles"
+                  title="Rewrite with AI"
+                  :loading="rewritingId === block.id"
+                  :disabled="rewritingId !== null && rewritingId !== block.id"
+                />
+              </UDropdownMenu>
               <UButton
                 size="xs"
                 variant="ghost"

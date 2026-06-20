@@ -44,7 +44,7 @@ useHead({
 </script>
 
 <template>
-  <UContainer class="py-4 sm:py-6">
+  <UContainer class="py-3 sm:py-5">
     <PdfDesigner />
   </UContainer>
 </template>

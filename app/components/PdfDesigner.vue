@@ -8,6 +8,7 @@ const toast = useToast()
 const isGenerating = ref(false)
 const isPreviewing = ref(false)
 const activeSection = ref<'header' | 'body' | 'footer'>('body')
+const activePanel = ref<'content' | 'style' | 'ai' | 'data'>('content')
 const previewUrl = ref<string | null>(null)
 const lastBlob = ref<Blob | null>(null)
 const validationErrors = ref<string[]>([])
@@ -55,6 +56,13 @@ const templateItems = Object.entries(TEMPLATES).map(([key, t]) => ({
   label: t.label,
   value: key
 }))
+
+const panelItems = [
+  { label: 'Content', value: 'content', icon: 'i-lucide-align-left' },
+  { label: 'Style', value: 'style', icon: 'i-lucide-palette' },
+  { label: 'AI', value: 'ai', icon: 'i-lucide-sparkles' },
+  { label: 'Data', value: 'data', icon: 'i-lucide-braces' }
+]
 
 const isHex = (v: string) => /^#[0-9a-fA-F]{6}$/.test(v)
 
@@ -133,11 +141,12 @@ function buildPayload(): PdfDocumentConfig {
   return payload
 }
 
-function addMergeRow() {
-  mergeRows.value.push({ key: '', value: '' })
-}
-function removeMergeRow(index: number) {
-  mergeRows.value.splice(index, 1)
+function onMergeSuggested(fields: { key: string; value: string }[]) {
+  for (const f of fields) {
+    if (!f.key?.trim()) continue
+    const exists = mergeRows.value.some((r) => r.key === f.key)
+    if (!exists) mergeRows.value.push({ key: f.key, value: f.value || '' })
+  }
 }
 
 function stableStringify(v: any): string {
@@ -229,7 +238,7 @@ let autoT: number | null = null
 function scheduleAutoPreview() {
   if (!autoPreview.value) return
   if (autoT) window.clearTimeout(autoT)
-  autoT = window.setTimeout(() => previewPdf({ silent: true }), 700)
+  autoT = window.setTimeout(() => previewPdf({ silent: true }), 350)
 }
 
 watch(
@@ -446,108 +455,103 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="grid gap-4 sm:gap-6 lg:grid-cols-12">
-    <section class="min-w-0 lg:col-span-7">
-      <div class="space-y-4 sm:space-y-6">
-        <UCard class="border-violet-100/60 shadow-sm dark:border-slate-700/60">
-          <template #header>
-            <div class="flex flex-wrap items-center justify-between gap-3">
-              <div class="flex items-center gap-3">
-                <UDropdownMenu :items="docMenuItems" :content="{ align: 'start' }">
-                  <UButton
-                    variant="ghost"
-                    color="neutral"
-                    size="sm"
-                    icon="i-lucide-files"
-                    trailing-icon="i-lucide-chevron-down"
-                    class="font-semibold"
-                    :label="store.config.title || 'Untitled'"
-                  />
-                </UDropdownMenu>
-              </div>
-              <div class="flex flex-wrap items-center gap-2">
-                <UFieldGroup size="sm">
-                  <UButton
-                    variant="ghost"
-                    icon="i-lucide-undo-2"
-                    :disabled="!store.canUndo"
-                    title="Undo (Ctrl/Cmd+Z)"
-                    @click="onUndo"
-                  />
-                  <UButton
-                    variant="ghost"
-                    icon="i-lucide-redo-2"
-                    :disabled="!store.canRedo"
-                    title="Redo (Ctrl/Cmd+Shift+Z)"
-                    @click="onRedo"
-                  />
-                </UFieldGroup>
-                <USelect
-                  placeholder="Load template…"
-                  :items="templateItems"
-                  size="sm"
-                  class="w-40"
-                  @update:model-value="onTemplateSelect"
-                />
-                <UButton
-                  :loading="isPreviewing"
-                  :disabled="isGenerating"
-                  label="Preview"
-                  icon="i-lucide-eye"
-                  @click="previewPdf()"
-                />
-                <UButton
-                  :loading="isGenerating"
-                  :disabled="isPreviewing"
-                  label="Download"
-                  variant="soft"
-                  icon="i-lucide-download"
-                  @click="generateAndDownload"
-                />
-              </div>
-            </div>
-          </template>
+  <div class="grid gap-5 lg:grid-cols-12 lg:gap-6">
+    <!-- Editor -->
+    <section class="min-w-0 space-y-4 lg:col-span-7">
+      <!-- Compact toolbar -->
+      <div
+        class="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200/80 bg-white px-3 py-2 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/60"
+      >
+        <UDropdownMenu :items="docMenuItems" :content="{ align: 'start' }">
+          <UButton
+            variant="ghost"
+            color="neutral"
+            size="sm"
+            icon="i-lucide-files"
+            trailing-icon="i-lucide-chevron-down"
+            class="max-w-[10rem] truncate font-medium"
+            :label="store.config.title || 'Untitled'"
+          />
+        </UDropdownMenu>
 
-          <div class="grid gap-4 md:grid-cols-12">
-            <div class="md:col-span-8">
-              <UFormField label="Title" size="sm" :error="validationErrors.find(e => e.startsWith('Title'))">
-                <UInput v-model="store.config.title" placeholder="e.g. Invoice · Proposal · Report" />
+        <div class="hidden h-5 w-px bg-slate-200 dark:bg-slate-700 sm:block" />
+
+        <UFieldGroup size="sm">
+          <UButton
+            variant="ghost"
+            icon="i-lucide-undo-2"
+            :disabled="!store.canUndo"
+            title="Undo (Ctrl/Cmd+Z)"
+            @click="onUndo"
+          />
+          <UButton
+            variant="ghost"
+            icon="i-lucide-redo-2"
+            :disabled="!store.canRedo"
+            title="Redo (Ctrl/Cmd+Shift+Z)"
+            @click="onRedo"
+          />
+        </UFieldGroup>
+
+        <USelect
+          placeholder="Template…"
+          :items="templateItems"
+          size="sm"
+          class="w-32"
+          @update:model-value="onTemplateSelect"
+        />
+
+        <div class="flex-1" />
+
+        <UButton
+          :loading="isGenerating"
+          :disabled="isPreviewing"
+          label="Download"
+          icon="i-lucide-download"
+          size="sm"
+          @click="generateAndDownload"
+        />
+      </div>
+
+      <!-- Validation -->
+      <div
+        v-if="validationErrors.length > 0"
+        class="rounded-lg border border-red-200/80 bg-red-50/80 px-3 py-2 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-400"
+      >
+        {{ validationErrors[0] }}
+        <span v-if="validationErrors.length > 1" class="text-red-500/80">
+          · +{{ validationErrors.length - 1 }} more
+        </span>
+      </div>
+
+      <!-- Tabbed editor panel -->
+      <div class="rounded-xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-700/60 dark:bg-slate-900/40">
+        <div class="border-b border-slate-100 px-3 pt-3 dark:border-slate-800">
+          <UTabs v-model="activePanel" :items="panelItems" size="sm" />
+        </div>
+
+        <div :class="activePanel === 'ai' || activePanel === 'data' ? '' : 'p-4 sm:p-5'">
+          <!-- Content -->
+          <div v-show="activePanel === 'content'" class="space-y-4">
+            <div class="grid gap-3 sm:grid-cols-3">
+              <UFormField label="Title" size="sm" class="sm:col-span-2" :error="validationErrors.find(e => e.startsWith('Title'))">
+                <UInput v-model="store.config.title" placeholder="Invoice, Report, Letter…" />
               </UFormField>
-            </div>
-            <div class="md:col-span-4">
-              <UFormField label="Base font" size="sm">
+              <UFormField label="Font" size="sm">
                 <USelect v-model="store.config.design.font" :items="fontItems" />
               </UFormField>
             </div>
-          </div>
 
-          <div
-            v-if="validationErrors.length > 0"
-            class="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800/50 dark:bg-red-950/50 dark:text-red-400"
-          >
-            <ul class="list-inside list-disc space-y-0.5">
-              <li v-for="err in validationErrors" :key="err">{{ err }}</li>
-            </ul>
-          </div>
-        </UCard>
+            <UTabs
+              v-model="activeSection"
+              :items="[
+                { label: 'Header', value: 'header' },
+                { label: 'Body', value: 'body' },
+                { label: 'Footer', value: 'footer' }
+              ]"
+              size="sm"
+            />
 
-        <UCard class="border-violet-100/60 shadow-sm dark:border-slate-700/60">
-          <template #header>
-            <div class="flex items-center justify-between gap-3">
-              <div class="text-sm font-semibold text-slate-800 dark:text-slate-200">Content</div>
-            </div>
-          </template>
-
-          <UTabs
-            v-model="activeSection"
-            :items="[
-              { label: 'Header', value: 'header' },
-              { label: 'Body', value: 'body' },
-              { label: 'Footer', value: 'footer' }
-            ]"
-          />
-
-          <div class="mt-4">
             <BlockEditor v-if="activeSection === 'header'" v-model="store.config.header" title="Header" />
             <BlockEditor
               v-else-if="activeSection === 'body'"
@@ -557,24 +561,22 @@ onUnmounted(() => {
             />
             <BlockEditor v-else v-model="store.config.footer" title="Footer" />
           </div>
-        </UCard>
 
-        <UCard class="border-violet-100/60 shadow-sm dark:border-slate-700/60">
-          <template #header>
-            <div class="text-sm font-semibold text-slate-800 dark:text-slate-200">Design</div>
-          </template>
-
-          <div class="space-y-5">
-            <div class="grid grid-cols-2 gap-3">
+          <!-- Style -->
+          <div v-show="activePanel === 'style'" class="space-y-5">
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <UFormField label="Page size" size="sm">
                 <USelect v-model="store.config.layout.pageSize" :items="pageSizeItems" />
               </UFormField>
               <UFormField label="Orientation" size="sm">
                 <USelect v-model="store.config.layout.orientation" :items="orientationItems" />
               </UFormField>
+              <UFormField label="Margin (pt)" size="sm" help="54 ≈ 0.75in" :error="validationErrors.find(e => e.startsWith('Margin'))">
+                <UInput v-model.number="store.config.layout.marginPt" type="number" />
+              </UFormField>
             </div>
 
-            <div v-if="store.config.layout.pageSize === 'CUSTOM'" class="grid grid-cols-2 gap-2">
+            <div v-if="store.config.layout.pageSize === 'CUSTOM'" class="grid grid-cols-2 gap-3">
               <UFormField label="Width (pt)" size="sm" :error="validationErrors.find(e => e.startsWith('Custom width'))">
                 <UInput v-model.number="store.config.layout.customWidthPt" type="number" placeholder="595" />
               </UFormField>
@@ -583,21 +585,15 @@ onUnmounted(() => {
               </UFormField>
             </div>
 
-            <UFormField label="Margin (pt)" size="sm" help="54pt ≈ 0.75in" :error="validationErrors.find(e => e.startsWith('Margin'))">
-              <UInput v-model.number="store.config.layout.marginPt" type="number" />
-            </UFormField>
-
-            <USeparator />
-
             <div>
-              <div class="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Style presets</div>
+              <p class="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">Themes</p>
               <div class="flex flex-wrap gap-2">
                 <button
                   v-for="preset in STYLE_PRESETS"
                   :key="preset.name"
                   type="button"
-                  class="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 transition hover:border-violet-300 hover:bg-violet-50 dark:border-slate-700 dark:text-slate-300 dark:hover:border-violet-700 dark:hover:bg-violet-950/40"
-                  :title="`Apply ${preset.name} theme`"
+                  class="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 transition hover:border-violet-300 hover:bg-violet-50 dark:border-slate-700 dark:text-slate-300 dark:hover:border-violet-700 dark:hover:bg-violet-950/40"
+                  :title="`Apply ${preset.name}`"
                   @click="applyStyle(preset)"
                 >
                   <span class="flex">
@@ -611,7 +607,7 @@ onUnmounted(() => {
             </div>
 
             <div>
-              <div class="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Colors</div>
+              <p class="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">Colors</p>
               <div class="grid grid-cols-2 gap-3">
                 <UFormField label="Text" size="sm" :error="validationErrors.find(e => e.startsWith('Text color'))">
                   <ColorPicker v-model="store.config.design.textColor" />
@@ -629,200 +625,121 @@ onUnmounted(() => {
 
               <div
                 v-if="contrast !== null && contrast < 4.5"
-                class="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-400"
+                class="mt-3 flex items-start gap-2 rounded-lg border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-xs text-amber-700 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-400"
               >
                 <UIcon name="i-lucide-triangle-alert" class="mt-0.5 size-3.5 shrink-0" />
-                <span>Low text/background contrast ({{ contrast }}:1). Aim for 4.5:1 or higher for readability.</span>
+                <span>Low contrast ({{ contrast }}:1). Aim for 4.5:1+.</span>
               </div>
             </div>
           </div>
-        </UCard>
 
-        <UCard class="border-violet-100/60 shadow-sm dark:border-slate-700/60">
-          <template #header>
-            <div class="text-sm font-semibold text-slate-800 dark:text-slate-200">Advanced</div>
-          </template>
+          <!-- AI -->
+          <div v-show="activePanel === 'ai'">
+            <AiAssistant
+              :batch-columns="batchColumns"
+              :batch-sample-row="batchRows[0]"
+              @merge-suggested="onMergeSuggested"
+            />
+          </div>
 
-          <details class="group">
-            <summary class="flex cursor-pointer list-none items-center justify-between rounded-lg px-1 py-1 text-sm text-slate-600 transition hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/60">
-              <span>Custom fonts, merge fields & batch from CSV</span>
-              <span class="text-xs text-slate-400 group-open:hidden">Show</span>
-              <span class="text-xs text-slate-400 hidden group-open:inline">Hide</span>
-            </summary>
-
-            <div class="mt-3 space-y-5">
-              <div>
-                <div class="mb-2 text-xs font-medium text-slate-600 dark:text-slate-300">Custom fonts (TTF/OTF)</div>
-                <div class="space-y-2">
-                  <div class="flex items-center gap-2">
-                    <input
-                      type="file"
-                      accept=".ttf,.otf,font/ttf,font/otf"
-                      class="block w-full text-xs text-slate-700 dark:text-slate-300"
-                      @change="onFontPicked('regular', (($event.target as HTMLInputElement).files?.[0] ?? null))"
-                    />
-                    <UButton size="xs" variant="ghost" label="Clear" @click="clearFont('regular')" />
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <input
-                      type="file"
-                      accept=".ttf,.otf,font/ttf,font/otf"
-                      class="block w-full text-xs text-slate-700 dark:text-slate-300"
-                      @change="onFontPicked('bold', (($event.target as HTMLInputElement).files?.[0] ?? null))"
-                    />
-                    <UButton size="xs" variant="ghost" label="Clear" @click="clearFont('bold')" />
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <input
-                      type="file"
-                      accept=".ttf,.otf,font/ttf,font/otf"
-                      class="block w-full text-xs text-slate-700 dark:text-slate-300"
-                      @change="onFontPicked('italic', (($event.target as HTMLInputElement).files?.[0] ?? null))"
-                    />
-                    <UButton size="xs" variant="ghost" label="Clear" @click="clearFont('italic')" />
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <input
-                      type="file"
-                      accept=".ttf,.otf,font/ttf,font/otf"
-                      class="block w-full text-xs text-slate-700 dark:text-slate-300"
-                      @change="onFontPicked('boldItalic', (($event.target as HTMLInputElement).files?.[0] ?? null))"
-                    />
-                    <UButton size="xs" variant="ghost" label="Clear" @click="clearFont('boldItalic')" />
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <div class="mb-1 text-xs font-medium text-slate-600 dark:text-slate-300">Merge fields</div>
-                <p class="mb-2 text-xs text-slate-500 dark:text-slate-400">
-                  Add a field, then use <span class="font-mono">{{ tokenExample }}</span> anywhere in your text. Use dots for groups, e.g. <span class="font-mono">{{ dottedExample }}</span>.
-                </p>
-                <div class="space-y-2">
-                  <div v-for="(row, i) in mergeRows" :key="i" class="flex items-center gap-2">
-                    <UInput v-model="row.key" size="sm" placeholder="field (e.g. client.name)" class="flex-1 font-mono" />
-                    <UInput v-model="row.value" size="sm" placeholder="value" class="flex-1" />
-                    <UButton size="xs" color="error" variant="ghost" icon="i-lucide-x" title="Remove field" @click="removeMergeRow(i)" />
-                  </div>
-                </div>
-                <UButton class="mt-2" size="xs" variant="soft" icon="i-lucide-plus" label="Add field" @click="addMergeRow" />
-              </div>
-
-              <div>
-                <div class="mb-1 text-xs font-medium text-slate-600 dark:text-slate-300">Batch from spreadsheet</div>
-                <p class="mb-2 text-xs text-slate-500 dark:text-slate-400">
-                  Upload a CSV — each row becomes a PDF, with column names as merge fields. Export from Excel/Sheets as “.csv”.
-                </p>
-
-                <div class="flex items-center gap-2">
-                  <input
-                    type="file"
-                    accept=".csv,text/csv"
-                    class="block w-full text-xs text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-violet-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-violet-700 hover:file:bg-violet-100 dark:text-slate-300 dark:file:bg-violet-950 dark:file:text-violet-300"
-                    @change="onCsvPicked((($event.target as HTMLInputElement).files?.[0] ?? null))"
-                  />
-                  <UButton v-if="batchRows.length" size="xs" variant="ghost" label="Clear" @click="clearBatch" />
-                </div>
-
-                <div v-if="batchRows.length" class="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-                  <div class="font-medium text-slate-700 dark:text-slate-200">{{ batchSourceName }} · {{ batchRows.length }} rows</div>
-                  <div class="mt-0.5 flex flex-wrap gap-1">
-                    <UBadge v-for="col in batchColumns" :key="col" size="xs" variant="soft" class="font-mono">{{ col }}</UBadge>
-                  </div>
-                </div>
-
-                <UFormField label="File name pattern" size="sm" class="mt-3" :help="namePatternHelp">
-                  <UInput v-model="batchNamePattern" :placeholder="namePatternPlaceholder" />
-                </UFormField>
-
-                <UButton
-                  class="mt-3 w-full"
-                  :loading="isGenerating"
-                  :disabled="isPreviewing || !batchRows.length"
-                  label="Generate ZIP"
-                  icon="i-lucide-package"
-                  @click="batchGenerateZip"
-                />
-              </div>
-            </div>
-          </details>
-        </UCard>
+          <!-- Data -->
+          <div v-show="activePanel === 'data'">
+            <DataPanel
+              v-model:merge-rows="mergeRows"
+              v-model:batch-name-pattern="batchNamePattern"
+              :batch-rows="batchRows"
+              :batch-columns="batchColumns"
+              :batch-source-name="batchSourceName"
+              :is-generating="isGenerating"
+              :is-previewing="isPreviewing"
+              :token-example="tokenExample"
+              :dotted-example="dottedExample"
+              :name-pattern-placeholder="namePatternPlaceholder"
+              :name-pattern-help="namePatternHelp"
+              @csv-picked="onCsvPicked"
+              @clear-batch="clearBatch"
+              @batch-generate="batchGenerateZip"
+              @font-picked="onFontPicked"
+              @clear-font="clearFont"
+              @merge-suggested="onMergeSuggested"
+            />
+          </div>
+        </div>
       </div>
     </section>
 
+    <!-- Preview -->
     <section class="min-w-0 lg:col-span-5">
-      <div class="lg:sticky lg:top-20">
-        <UCard class="border-violet-200/60 shadow-sm dark:border-slate-700/60">
-          <template #header>
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div class="flex items-center gap-2">
-                <div class="text-sm font-semibold text-slate-800 dark:text-slate-200">Preview</div>
-                <UBadge v-if="isPreviewing" variant="soft" size="xs" color="warning">Rendering…</UBadge>
-                <UBadge v-else-if="autoPreview" variant="soft" size="xs" color="success">Live</UBadge>
-              </div>
-              <div class="flex items-center gap-2">
-                <USwitch v-model="autoPreview" size="sm" label="Auto" />
-                <UButton
-                  size="xs"
-                  variant="soft"
-                  icon="i-lucide-refresh-cw"
-                  label="Refresh"
-                  :loading="isPreviewing"
-                  @click="previewPdf()"
-                />
-                <UButton
-                  size="xs"
-                  variant="soft"
-                  icon="i-lucide-download"
-                  label="Download"
-                  :disabled="!lastBlob"
-                  @click="downloadCurrentBlob"
-                />
-              </div>
+      <div class="lg:sticky lg:top-[4.5rem]">
+        <div class="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-700/60 dark:bg-slate-900/40">
+          <div class="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2 dark:border-slate-800">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-medium text-slate-700 dark:text-slate-200">Preview</span>
+              <UBadge v-if="isPreviewing" variant="soft" size="xs" color="warning">Rendering</UBadge>
+              <UBadge v-else-if="autoPreview" variant="soft" size="xs" color="success">Live</UBadge>
             </div>
-          </template>
+            <div class="flex items-center gap-1">
+              <USwitch v-model="autoPreview" size="sm" />
+              <UButton
+                size="xs"
+                variant="ghost"
+                icon="i-lucide-refresh-cw"
+                title="Refresh"
+                :loading="isPreviewing"
+                @click="previewPdf()"
+              />
+              <UButton
+                size="xs"
+                variant="ghost"
+                icon="i-lucide-download"
+                title="Download"
+                :disabled="!lastBlob"
+                @click="downloadCurrentBlob"
+              />
+            </div>
+          </div>
 
-          <iframe
-            v-if="previewUrl"
-            :src="previewUrl"
-            class="h-[60vh] sm:h-[75vh] lg:h-[80vh] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-700"
-          />
-          <!-- Onboarding: empty document → offer a starting template -->
-          <div
-            v-else-if="isEmptyDoc"
-            class="grid h-[60vh] sm:h-[75vh] lg:h-[80vh] place-items-center rounded-lg border border-dashed border-slate-300 px-6 text-center dark:border-slate-600"
-          >
-            <div class="w-full max-w-sm space-y-4">
+          <div class="bg-slate-100 p-2 dark:bg-slate-950/50">
+            <iframe
+              v-if="previewUrl"
+              :src="previewUrl"
+              class="h-[58vh] w-full rounded-lg border border-slate-200 bg-white shadow-inner sm:h-[70vh] lg:h-[calc(100vh-8rem)] dark:border-slate-700"
+            />
+            <div
+              v-else-if="isEmptyDoc"
+              class="grid h-[58vh] place-items-center rounded-lg border border-dashed border-slate-300 bg-white px-6 text-center dark:border-slate-600 dark:bg-slate-900 sm:h-[70vh] lg:h-[calc(100vh-8rem)]"
+            >
+              <div class="max-w-xs space-y-4">
+                <UIcon name="i-lucide-layout-template" class="mx-auto size-8 text-violet-400" />
+                <div>
+                  <p class="font-medium text-slate-700 dark:text-slate-200">Start from a template</p>
+                  <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Or use the AI tab to generate one.</p>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <UButton
+                    v-for="t in templateItems"
+                    :key="t.value"
+                    block
+                    size="sm"
+                    variant="soft"
+                    :label="t.label"
+                    @click="onTemplateSelect(t.value)"
+                  />
+                </div>
+              </div>
+            </div>
+            <div
+              v-else
+              class="grid h-[58vh] place-items-center rounded-lg border border-dashed border-slate-300 bg-white text-center text-sm text-slate-400 dark:border-slate-600 dark:bg-slate-900 sm:h-[70vh] lg:h-[calc(100vh-8rem)]"
+            >
               <div class="space-y-1">
-                <UIcon name="i-lucide-sparkles" class="mx-auto size-8 text-violet-500" />
-                <div class="text-base font-semibold text-slate-700 dark:text-slate-200">Start with a template</div>
-                <p class="text-sm text-slate-500 dark:text-slate-400">Pick one to get going — you can change everything after.</p>
-              </div>
-              <div class="grid grid-cols-2 gap-2">
-                <UButton
-                  v-for="t in templateItems"
-                  :key="t.value"
-                  block
-                  variant="soft"
-                  :label="t.label"
-                  @click="onTemplateSelect(t.value)"
-                />
+                <UIcon name="i-lucide-file-text" class="mx-auto size-7 opacity-50" />
+                <p>Preview will appear here</p>
+                <p v-if="validationErrors.length" class="text-xs text-red-500">Fix errors to render</p>
               </div>
             </div>
           </div>
-          <div
-            v-else
-            class="grid h-[60vh] sm:h-[75vh] lg:h-[80vh] place-items-center rounded-lg border border-dashed border-slate-300 text-center text-sm text-slate-400 dark:border-slate-600 dark:text-slate-500"
-          >
-            <div class="space-y-1">
-              <UIcon name="i-lucide-file-text" class="mx-auto size-8 opacity-60" />
-              <div>Your live preview will appear here.</div>
-              <div v-if="validationErrors.length" class="text-red-500 dark:text-red-400">
-                Fix the highlighted errors to render.
-              </div>
-            </div>
-          </div>
-        </UCard>
+        </div>
       </div>
     </section>
   </div>

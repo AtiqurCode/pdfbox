@@ -39,9 +39,11 @@ export default defineNuxtConfig({
     name: 'PDFora'
   },
   runtimeConfig: {
+    groqApiKey: process.env.GROQ_API_KEY || '',
     public: {
       // Set this in production: NUXT_PUBLIC_SITE_URL=https://your-domain.com
-      siteUrl: process.env.NUXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+      siteUrl: process.env.NUXT_PUBLIC_SITE_URL || 'http://localhost:3000',
+      aiEnabled: Boolean(process.env.GROQ_API_KEY)
     }
   },
   sitemap: {
